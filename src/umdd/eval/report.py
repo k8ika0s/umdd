@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import json
 from collections.abc import Mapping
 from datetime import datetime
@@ -60,6 +61,19 @@ def append_csv(path: Path, row: dict) -> None:
 
 def append_jsonl(path: Path, payload: dict) -> None:
     """Append a JSON line (UTF-8) to a log file."""
+
+    def _to_jsonable(obj: Any) -> Any:
+        if dataclasses.is_dataclass(obj):
+            return _to_jsonable(dataclasses.asdict(obj))  # type: ignore[arg-type]
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, Mapping):
+            return {k: _to_jsonable(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple, set)):
+            return [_to_jsonable(v) for v in obj]
+        return obj
+
+    safe_payload = _to_jsonable(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload) + "\n")
+        f.write(json.dumps(safe_payload) + "\n")

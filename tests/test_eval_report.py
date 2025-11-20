@@ -39,6 +39,14 @@ def test_append_jsonl(tmp_path: Path):
     assert path.read_text().strip() == '{"a": 1}'
 
 
+def test_append_jsonl_handles_dataclass(tmp_path: Path):
+    path = tmp_path / "log.jsonl"
+    payload = {"summary": _sample_summary()}
+    append_jsonl(path, payload)
+    content = path.read_text().strip()
+    assert "codepage_counts" in content
+
+
 def test_summarize_log_over_csv(tmp_path: Path):
     summary = _sample_summary()
     row = summary_to_row(summary, source="synthetic.bin", tag="test")
