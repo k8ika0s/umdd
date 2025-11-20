@@ -14,6 +14,8 @@ def test_results_to_jsonl_and_arrow(tmp_path: Path) -> None:
             codepage_confidence=0.9,
             tag_spans=[{"start": 0, "end": 4, "tag": "RDW"}],
             boundary_positions=[0, 4],
+            tag_confidences=[0.8, 0.7],
+            boundary_confidences=[0.6, 0.4],
         )
     ]
     jsonl_path = tmp_path / "out.jsonl"

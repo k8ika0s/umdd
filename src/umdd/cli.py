@@ -86,10 +86,22 @@ def infer(
         "-f",
         help="Output format: json (default), jsonl, or arrow (IPC). Arrow/JSONL require --output.",
     ),
+    include_confidence: bool = typer.Option(
+        False,
+        "--include-confidence",
+        help="Emit per-token tag/boundary confidences in outputs (JSON/JSONL/Arrow).",
+    ),
+    gzip_output: bool = typer.Option(
+        False, "--gzip", help="Gzip JSONL output (requires --format jsonl)."
+    ),
 ) -> None:
     """Run the multi-head model (codepage + tag + boundary) on input data."""
     data = _read_bytes(input)
-    results = infer_bytes(data, checkpoint=checkpoint, max_records=max_records)
+    if gzip_output and output_format.lower() != "jsonl":
+        raise typer.BadParameter("--gzip only applies to jsonl output formats")
+    results = infer_bytes(
+        data, checkpoint=checkpoint, max_records=max_records, include_confidence=include_confidence
+    )
     fmt = output_format.lower()
     if fmt not in {"json", "jsonl", "arrow"}:
         raise typer.BadParameter("Format must be one of: json, jsonl, arrow")
@@ -104,11 +116,13 @@ def infer(
             "codepage_confidence": r.codepage_confidence,
             "tag_spans": r.tag_spans,
             "boundary_positions": r.boundary_positions,
+            "tag_confidences": r.tag_confidences,
+            "boundary_confidences": r.boundary_confidences,
         }
         for r in results
     ]
     if fmt == "jsonl":
-        results_to_jsonl(results, output)  # type: ignore[arg-type]
+        results_to_jsonl(results, output, gzip_output=gzip_output)  # type: ignore[arg-type]
         console.print(f"[bold green]Wrote JSONL inference output[/] to {output}")
     elif fmt == "arrow":
         results_to_arrow(results, output)  # type: ignore[arg-type]

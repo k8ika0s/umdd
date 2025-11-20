@@ -24,6 +24,8 @@ class InferenceResult:
     codepage_confidence: float
     tag_spans: list[dict[str, Any]]
     boundary_positions: list[int]
+    tag_confidences: list[float] | None = None
+    boundary_confidences: list[float] | None = None
 
 
 def load_multihead_checkpoint(path: Path, map_location: str = "cpu") -> tuple[MultiHeadModel, dict]:
@@ -70,7 +72,11 @@ def _tags_to_spans(tags: list[str]) -> list[dict[str, Any]]:
 
 
 def infer_bytes(
-    data: bytes, checkpoint: Path, max_records: int | None = None, device: str = "cpu"
+    data: bytes,
+    checkpoint: Path,
+    max_records: int | None = None,
+    device: str = "cpu",
+    include_confidence: bool = False,
 ) -> list[InferenceResult]:
     model, meta = load_multihead_checkpoint(checkpoint, map_location=device)
     codepages = meta["codepages"]
@@ -90,13 +96,28 @@ def infer_bytes(
             cp_id = int(cp_probs.argmax().item())
             cp_conf = float(cp_probs.max().item())
 
-            tag_ids = out["tag_logits"].argmax(dim=-1)[0].tolist()
+            tag_logits = out["tag_logits"]
+            tag_ids = tag_logits.argmax(dim=-1)[0].tolist()
             usable = min(len(record), encoder_cfg.max_len)
             tags = [id_to_tag.get(tid, "PAD") for tid in tag_ids[:usable] if tid != TAG_PAD]
             spans = _tags_to_spans(tags)
 
-            boundary_preds = out["boundary_logits"].argmax(dim=-1)[0].tolist()
+            boundary_logits = out["boundary_logits"]
+            boundary_preds = boundary_logits.argmax(dim=-1)[0].tolist()
             boundary_positions = [i for i, val in enumerate(boundary_preds[:usable]) if val == 1]
+
+            tag_conf: list[float] | None = None
+            boundary_conf: list[float] | None = None
+            if include_confidence:
+                tag_probs = F.softmax(tag_logits, dim=-1)[0]
+                boundary_probs = F.softmax(boundary_logits, dim=-1)[0]
+                tag_conf = [
+                    float(tag_probs[i, tid].item()) for i, tid in enumerate(tag_ids[:usable])
+                ]
+                boundary_conf = [
+                    float(boundary_probs[i, pred].item())
+                    for i, pred in enumerate(boundary_preds[:usable])
+                ]
 
         results.append(
             InferenceResult(
@@ -106,15 +127,24 @@ def infer_bytes(
                 codepage_confidence=cp_conf,
                 tag_spans=spans,
                 boundary_positions=boundary_positions,
+                tag_confidences=tag_conf,
+                boundary_confidences=boundary_conf,
             )
         )
     return results
 
 
-def results_to_jsonl(results: list[InferenceResult], path: Path) -> None:
+def results_to_jsonl(results: list[InferenceResult], path: Path, gzip_output: bool = False) -> None:
     """Write inference results as JSONL for downstream consumption."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
+    if gzip_output:
+        import gzip as gzip_lib
+
+        handle = gzip_lib.open(path, "wt", encoding="utf-8")
+    else:
+        handle = path.open("w", encoding="utf-8")
+
+    with handle as f:
         for r in results:
             f.write(
                 json.dumps(
@@ -125,6 +155,8 @@ def results_to_jsonl(results: list[InferenceResult], path: Path) -> None:
                         "codepage_confidence": r.codepage_confidence,
                         "tag_spans": r.tag_spans,
                         "boundary_positions": r.boundary_positions,
+                        "tag_confidences": r.tag_confidences,
+                        "boundary_confidences": r.boundary_confidences,
                     }
                 )
                 + "\n"
@@ -143,6 +175,8 @@ def results_to_arrow(results: list[InferenceResult], path: Path) -> None:
             # store spans as JSON to keep schema simple
             "tag_spans": [json.dumps(r.tag_spans) for r in results],
             "boundary_positions": [r.boundary_positions for r in results],
+            "tag_confidences": [r.tag_confidences or [] for r in results],
+            "boundary_confidences": [r.boundary_confidences or [] for r in results],
         }
     )
     with pa.OSFile(str(path), "wb") as sink:
