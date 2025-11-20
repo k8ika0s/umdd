@@ -219,6 +219,7 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 - `umdd train codepage --output-dir artifacts/codepage`: trains a tiny embedding + mean-pool classifier on synthetic data to fix the interface and checkpoint format early; rationale: validates data loaders and training plumbing before real datasets arrive. Accepts real RDW datasets per codepage via `--dataset CP037=path1.bin,path2.bin` and can top up with synthetic via `--synthetic-extra-per-codepage`.
 - `umdd train multitask --output-dir artifacts/multihead`: trains a small shared encoder + heads for codepage, token tags, and field-boundary cues on synthetic RDW data; rationale: exercise the end-to-end training/inference path before real data lands.
 - `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 <input>`: runs the multi-head model on raw RDW data and emits predicted codepage + tagged spans + boundary positions; rationale: prove a working, testable inference path while we iterate on data/model fidelity.
+- Notebook playground: `notebooks/umdd_playground.ipynb` with step-by-step synthetic generation, heuristic preview, tiny multi-head training, and inference. Rationale: give notebook-oriented users a single, heavily commented place to experiment without the CLI.
 - Quick demos: sample copybooks live in `data/copybooks/sample.cpy`, `data/copybooks/smf_sample.cpy`, and `data/copybooks/mq_sample.cpy`; generate fixtures via `umdd dataset copybook data/copybooks/sample.cpy out.bin --metadata out.json`.
 
 ## Dev Setup (Python/PyTorch)
