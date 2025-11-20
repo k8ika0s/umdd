@@ -2,9 +2,7 @@
 Entries are newest-first. Each entry captures what changed and why the choice was made.
 
 ## 2025-11-20
-- Added inference outputs (JSON/JSONL/Arrow) and a runtime Dockerfile for lean infer-only use; rationale: make downstream consumption easy and provide a portable container entrypoint.
-- Enhanced real-data intake: BDW iterator, copybook-derived tag/boundary labels, and CLI support for `--real CODEPAGE=PATH[:copybook[:bdw]]` to mix authentic datasets with synthetic during multi-head training.
-- Updated the notebook playground to include JSONL/Arrow inference export + Arrow round-trip so notebook users can exercise the new output formats without touching the CLI.
+- Added real-data prep hooks: BDW iterator, copybook-derived tag/boundary labeling, and multi-head training CLI accepts `--real CODEPAGE=PATH[:copybook[:bdw]]` to mix real RDW/BDW files with synthetic. Rationale: be ready to fine-tune on authentic bytes as soon as datasets arrive.
 - Added minimal multi-head model (Transformer encoder + codepage/tag/boundary heads) with synthetic labeled dataset, training loop, inference helpers, and CLI commands (`umdd train multitask`, `umdd infer`); rationale: establish an end-to-end, testable inference path before real data arrives.
 - Documented multi-head training/inference flow and why synthetic labels are acceptable for now; refreshed README quickstart to show the new commands and their purpose.
 - Refined README with CI/Eval badges, artifact download instructions, and explicit container-first rationale; highlighted data-request expectations for partners. Rationale: make operations/onboarding self-serve before opening a PR and keep the “why” visible for newcomers.

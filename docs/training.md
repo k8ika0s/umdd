@@ -58,6 +58,7 @@
   metrics = train_multitask(cfg)
   print(metrics)
   ```
+- Mixing in real data: `umdd train multitask --real CP037=data/real/CP037/file.bin:copybook.cpy --epochs 1 --output-dir artifacts/multihead_real`. Format: `CODEPAGE=PATH[:copybook[:bdw]]`; include `:bdw` if the file is BDW-wrapped. Copybook is optional but recommended to derive tag/boundary labels.
 
 ## Inference
 - CLI: `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 data/sample.bin`

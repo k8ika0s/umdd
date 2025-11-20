@@ -11,7 +11,14 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+from umdd.copybook.parser import Field, parse_copybook
 from umdd.data.generator import generate_synthetic_dataset, iter_records_with_rdw
+from umdd.data.loader import (
+    CopybookLabels,
+    labels_from_copybook,
+    load_records,
+    rdw_record_with_header,
+)
 from umdd.model import EncoderConfig, MultiHeadModel
 
 TAG_PAD = 0
@@ -49,22 +56,27 @@ class MultiTaskConfig:
     boundary_loss_weight: float = 1.0
     codepage_loss_weight: float = 1.0
     num_workers: int = 0
+    real_datasets: list[RealDataSpec] | None = None
 
 
-class SyntheticLabeledDataset(Dataset[dict[str, torch.Tensor]]):
-    """RDW synthetic data with byte-level labels for tags + boundaries."""
+@dataclass
+class RealDataSpec:
+    codepage: str
+    path: Path
+    bdw: bool = False
+    copybook: Path | None = None
+
+
+class MultiTaskDataset(Dataset[dict[str, torch.Tensor]]):
+    """RDW synthetic data with optional real RDW/BDW records and copybook labels."""
 
     def __init__(self, cfg: MultiTaskConfig) -> None:
         self.cfg = cfg
         self.samples: list[dict[str, torch.Tensor]] = []
-        for label, cp in enumerate(cfg.codepages):
-            data, _meta = generate_synthetic_dataset(count=cfg.samples_per_codepage, codepage=cp)
-            for length, body in iter_records_with_rdw(data):
-                record_with_rdw = length.to_bytes(2, "big") + b"\x00\x00" + body
-                sample = self._build_sample(
-                    record_with_rdw, codepage_label=label, body_len=len(body), rdw_len=length
-                )
-                self.samples.append(sample)
+        self._ingest_synthetic(cfg)
+        if cfg.real_datasets:
+            for spec in cfg.real_datasets:
+                self._ingest_real(spec)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -72,8 +84,46 @@ class SyntheticLabeledDataset(Dataset[dict[str, torch.Tensor]]):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         return self.samples[idx]
 
+    def _ingest_synthetic(self, cfg: MultiTaskConfig) -> None:
+        for label, cp in enumerate(cfg.codepages):
+            data, _meta = generate_synthetic_dataset(count=cfg.samples_per_codepage, codepage=cp)
+            for length, body in iter_records_with_rdw(data):
+                record_with_rdw = length.to_bytes(2, "big") + b"\x00\x00" + body
+                sample = self._build_sample(
+                    record_with_rdw, codepage_label=label, body_len=len(body), labels=None
+                )
+                self.samples.append(sample)
+
+    def _ingest_real(self, spec: RealDataSpec) -> None:
+        label = (
+            self.cfg.codepages.index(spec.codepage) if spec.codepage in self.cfg.codepages else 0
+        )
+        records = load_records(spec.path, bdw=spec.bdw)
+        copybook_fields: list[Field] | None = None
+        if spec.copybook:
+            copybook_fields = parse_copybook(spec.copybook.read_text())
+        for _length, body in records:
+            record_with_rdw = rdw_record_with_header(body)
+            labels: CopybookLabels | None = None
+            if copybook_fields:
+                labels = labels_from_copybook(
+                    copybook_fields, body, self.cfg.max_len, TAG_TO_ID, BOUNDARY_PAD
+                )
+            sample = self._build_sample(
+                record_with_rdw,
+                codepage_label=label,
+                body_len=len(body),
+                labels=labels,
+            )
+            # If no labels are available, we still keep the sample for codepage head only.
+            self.samples.append(sample)
+
     def _build_sample(
-        self, record: bytes, codepage_label: int, body_len: int, rdw_len: int
+        self,
+        record: bytes,
+        codepage_label: int,
+        body_len: int,
+        labels: CopybookLabels | None,
     ) -> dict[str, torch.Tensor]:
         max_len = self.cfg.max_len
         tokens = torch.zeros(max_len, dtype=torch.long)
@@ -83,34 +133,35 @@ class SyntheticLabeledDataset(Dataset[dict[str, torch.Tensor]]):
         usable = min(len(record), max_len)
         tokens[:usable] = torch.tensor(list(record[:usable]), dtype=torch.long)
 
-        # Layout from generator: RDW (4 bytes), TEXT, PACKED (4 bytes), BINARY (4 bytes).
-        rdw_bytes = 4
-        text_len = max(body_len - 8, 0)
-        packed_len = 4
-        binary_len = 4
-
-        spans = [
-            (0, min(rdw_bytes, usable), TAG_RDW),
-            (rdw_bytes, min(rdw_bytes + text_len, usable), TAG_TEXT),
-            (rdw_bytes + text_len, min(rdw_bytes + text_len + packed_len, usable), TAG_PACKED),
-            (
-                rdw_bytes + text_len + packed_len,
-                min(rdw_bytes + text_len + packed_len + binary_len, usable),
-                TAG_BINARY,
-            ),
-        ]
-        for start, end, tag in spans:
-            if start >= usable:
-                continue
-            tag_labels[start:end] = tag
-        # Boundary labels: mark each span start.
-        for start, _end, _tag in spans:
-            if start < usable:
-                boundary_labels[start] = 1
-        # Non-boundary positions inside usable length.
-        for i in range(usable):
-            if boundary_labels[i] == BOUNDARY_PAD:
-                boundary_labels[i] = 0
+        if labels:
+            tag_labels = torch.tensor(labels.tag_ids[:max_len], dtype=torch.long)
+            boundary_labels = torch.tensor(labels.boundary_ids[:max_len], dtype=torch.long)
+        else:
+            # Synthetic layout: RDW (4), TEXT, PACKED (4), BINARY (4).
+            rdw_bytes = 4
+            text_len = max(body_len - 8, 0)
+            packed_len = 4
+            binary_len = 4
+            spans = [
+                (0, min(rdw_bytes, usable), TAG_RDW),
+                (rdw_bytes, min(rdw_bytes + text_len, usable), TAG_TEXT),
+                (rdw_bytes + text_len, min(rdw_bytes + text_len + packed_len, usable), TAG_PACKED),
+                (
+                    rdw_bytes + text_len + packed_len,
+                    min(rdw_bytes + text_len + packed_len + binary_len, usable),
+                    TAG_BINARY,
+                ),
+            ]
+            for start, end, tag in spans:
+                if start >= usable:
+                    continue
+                tag_labels[start:end] = tag
+            for start, _end, _tag in spans:
+                if start < usable:
+                    boundary_labels[start] = 1
+            for i in range(usable):
+                if boundary_labels[i] == BOUNDARY_PAD:
+                    boundary_labels[i] = 0
 
         attention_mask = torch.ones(max_len, dtype=torch.bool)
         attention_mask[:usable] = False  # Transformer expects True for padding
@@ -140,7 +191,7 @@ def _masked_accuracy(preds: torch.Tensor, labels: torch.Tensor, ignore_index: in
 def train_multitask(config: MultiTaskConfig) -> dict:
     """Train multi-head model on synthetic labeled data."""
     device = torch.device(config.device)
-    ds = SyntheticLabeledDataset(config)
+    ds = MultiTaskDataset(config)
     loader = DataLoader(
         ds,
         batch_size=config.batch_size,

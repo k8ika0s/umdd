@@ -235,7 +235,7 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 4) Heuristic decode + log: `umdd eval heuristic --input data/sample.bin --output logs/eval_latest.json` (auto-logs CSV/JSONL unless `--no-auto-log`).
 5) Train multi-head model (codepage + tags + boundaries): `umdd train multitask --output-dir artifacts/multihead --epochs 1`.
 6) Run inference on synthetic bytes: `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 data/sample.bin`.
-7) Inference outputs for downstream tools: `umdd infer --format arrow --output logs/infer.arrow --include-confidence --checkpoint artifacts/multihead/multihead.pt data/sample.bin` (or `--format jsonl --gzip`).
+7) Train multi-head with real data (when available): `umdd train multitask --real CP037=data/real/CP037/file.bin:copybook.cpy --output-dir artifacts/multihead_real`.
 8) Train codepage head on synthetic: `umdd train codepage --output-dir artifacts/codepage`.
 9) Benchmark: `python scripts/benchmark.py` to track heuristic throughput over time.
 
@@ -256,7 +256,7 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 - Public search (Hugging Face queries for EBCDIC/mainframe/cobol/VSAM) did not surface raw EBCDIC/VSAM binaries; we are intentionally leaning on synthetic data until org-provided datasets arrive.
 - When you have real RDW-prefixed binaries, drop them under `data/real/<CODEPAGE>/` and train with `--dataset CP037=data/real/CP037/sample.bin` (repeat per codepage). Rationale: keep real data separated, portable, and easily referenced from training CLI flags.
 - Data ask for partners: see `data-request.txt` for what “good” looks like (codepages, RDW/BDW hints, packed/zoned/binary coverage, and masking expectations) so upstream teams can supply useful and compliant samples.
-- Multi-head training can ingest real datasets via `--real CODEPAGE=PATH[:copybook[:bdw]]` to mix real RDW/BDW with synthetic; include a copybook to derive tag/boundary labels when available.
+- Multi-head training can ingest real datasets via `--real CODEPAGE=PATH[:copybook[:bdw]]` to mix real RDW/BDW files with synthetic; include a copybook to derive tag/boundary labels when available.
 - Sample copybooks for fixtures: `data/copybooks/sample.cpy`, `data/copybooks/smf_sample.cpy`, `data/copybooks/mq_sample.cpy`. Generate data with `umdd dataset copybook <cpy> out.bin --metadata out.json` to mirror realistic layouts while we wait for real bytes.
 - Runtime image: `docker/Dockerfile.runtime` builds a lean infer-only image (PyTorch CPU + Arrow). Example: `docker build -f docker/Dockerfile.runtime -t umdd-runtime .` then `docker run --rm -v $PWD:/workspace umdd-runtime infer --help`.
 
