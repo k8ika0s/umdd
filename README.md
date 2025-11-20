@@ -217,6 +217,8 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 - `umdd dataset copybook <copybook.cpy> <output.bin> [--bdw --binary-endian little --no-overpunch]`: generates synthetic data from a copybook with options for BDW blocks, COMP endianness, and zoned overpunch; rationale: mirror copybook-driven structures while we await real datasets.
 - `umdd eval heuristic [--input file]`: runs the heuristic decoder over a supplied or synthetic dataset and summarizes codepage guesses/printability; rationale: establishes a measurable baseline for future ML heads. With `--output`, auto-logs to `logs/eval.csv` and `logs/eval.jsonl` by default (disable via `--no-auto-log`); override paths with `--log-csv/--log-jsonl`. Summaries: `umdd eval summarize logs/eval.csv`.
 - `umdd train codepage --output-dir artifacts/codepage`: trains a tiny embedding + mean-pool classifier on synthetic data to fix the interface and checkpoint format early; rationale: validates data loaders and training plumbing before real datasets arrive. Accepts real RDW datasets per codepage via `--dataset CP037=path1.bin,path2.bin` and can top up with synthetic via `--synthetic-extra-per-codepage`.
+- `umdd train multitask --output-dir artifacts/multihead`: trains a small shared encoder + heads for codepage, token tags, and field-boundary cues on synthetic RDW data; rationale: exercise the end-to-end training/inference path before real data lands.
+- `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 <input>`: runs the multi-head model on raw RDW data and emits predicted codepage + tagged spans + boundary positions; rationale: prove a working, testable inference path while we iterate on data/model fidelity.
 - Quick demos: sample copybooks live in `data/copybooks/sample.cpy`, `data/copybooks/smf_sample.cpy`, and `data/copybooks/mq_sample.cpy`; generate fixtures via `umdd dataset copybook data/copybooks/sample.cpy out.bin --metadata out.json`.
 
 ## Dev Setup (Python/PyTorch)
@@ -229,8 +231,10 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 2) Generate synthetic RDW fixtures: `umdd dataset synthetic data/synth.bin --metadata data/synth.json`.
 3) Copybook-driven fixture: `umdd dataset copybook data/copybooks/sample.cpy data/sample.bin --metadata data/sample.json` (flags: `--bdw`, `--binary-endian little`, `--no-overpunch`).
 4) Heuristic decode + log: `umdd eval heuristic --input data/sample.bin --output logs/eval_latest.json` (auto-logs CSV/JSONL unless `--no-auto-log`).
-5) Train codepage head on synthetic: `umdd train codepage --output-dir artifacts/codepage`.
-6) Benchmark: `python scripts/benchmark.py` to track heuristic throughput over time.
+5) Train multi-head model (codepage + tags + boundaries): `umdd train multitask --output-dir artifacts/multihead --epochs 1`.
+6) Run inference on synthetic bytes: `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 data/sample.bin`.
+7) Train codepage head on synthetic: `umdd train codepage --output-dir artifacts/codepage`.
+8) Benchmark: `python scripts/benchmark.py` to track heuristic throughput over time.
 
 ## Testing
 - Run unit tests with `pytest`. Early coverage locks in RDW handling, packed-decimal encoding, and the heuristic codepage preview so we can refactor safely as ML components arrive.

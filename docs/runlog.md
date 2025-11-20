@@ -2,6 +2,8 @@
 Entries are newest-first. Each entry captures what changed and why the choice was made.
 
 ## 2025-11-20
+- Added minimal multi-head model (Transformer encoder + codepage/tag/boundary heads) with synthetic labeled dataset, training loop, inference helpers, and CLI commands (`umdd train multitask`, `umdd infer`); rationale: establish an end-to-end, testable inference path before real data arrives.
+- Documented multi-head training/inference flow and why synthetic labels are acceptable for now; refreshed README quickstart to show the new commands and their purpose.
 - Refined README with CI/Eval badges, artifact download instructions, and explicit container-first rationale; highlighted data-request expectations for partners. Rationale: make operations/onboarding self-serve before opening a PR and keep the “why” visible for newcomers.
 - Added copybook-driven synthetic generator, stubs for field-typing/boundary heads, and a micro-benchmark; dockerized checks + tests passing.
 - Expanded copybook synth with overpunch support, endianness toggles, and added tests; containerized lint/type/tests remain green.

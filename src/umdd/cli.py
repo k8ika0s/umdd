@@ -13,7 +13,9 @@ from umdd.decoder import heuristic_decode
 from umdd.eval.harness import evaluate_dataset, evaluate_synthetic
 from umdd.eval.report import append_csv, append_jsonl, summary_to_row
 from umdd.eval.summarize import summarize_log
+from umdd.inference import infer_bytes
 from umdd.training.codepage import CodepageTrainingConfig, train_codepage_model
+from umdd.training.multitask import MultiTaskConfig, train_multitask
 
 app = typer.Typer(help="Decode mainframe data into structured outputs.")
 dataset_app = typer.Typer(help="Dataset helpers (synthetic fixtures, conversions).")
@@ -66,6 +68,34 @@ def decode(
     if output:
         output.write_bytes(orjson.dumps(payload))
         console.print(f"[bold green]Wrote heuristic output[/] to {output}")
+    else:
+        console.print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
+
+
+@app.command()
+def infer(
+    input: Path = typer.Argument(..., help="Dataset to run model inference against."),
+    checkpoint: Path = typer.Option(..., "--checkpoint", "-c", help="Multi-head model checkpoint."),
+    max_records: int = typer.Option(1, "--max-records", help="Limit number of records processed."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Optional path to write JSON."),
+) -> None:
+    """Run the multi-head model (codepage + tag + boundary) on input data."""
+    data = _read_bytes(input)
+    results = infer_bytes(data, checkpoint=checkpoint, max_records=max_records)
+    payload = [
+        {
+            "record_index": r.record_index,
+            "byte_length": r.byte_length,
+            "codepage": r.codepage,
+            "codepage_confidence": r.codepage_confidence,
+            "tag_spans": r.tag_spans,
+            "boundary_positions": r.boundary_positions,
+        }
+        for r in results
+    ]
+    if output:
+        output.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+        console.print(f"[bold green]Wrote inference output[/] to {output}")
     else:
         console.print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
 
@@ -265,6 +295,37 @@ def train_codepage(
     )
     console.print("[yellow]Training codepage head on synthetic data (heuristic baseline).[/]")
     metrics = train_codepage_model(config)
+    console.print(f"[bold green]Saved checkpoint[/] to {metrics['checkpoint']}")
+    console.print(orjson.dumps(metrics, option=orjson.OPT_INDENT_2).decode())
+
+
+@train_app.command("multitask")
+def train_multitask_cli(
+    output_dir: Path = typer.Option(
+        Path("artifacts/multihead"),
+        "--output-dir",
+        "-o",
+        help="Where to store checkpoints/metrics.",
+    ),
+    samples_per_codepage: int = typer.Option(
+        128, "--samples-per-codepage", help="Synthetic samples per codepage."
+    ),
+    max_len: int = typer.Option(96, "--max-len", help="Max sequence length."),
+    batch_size: int = typer.Option(32, "--batch-size", help="Batch size."),
+    epochs: int = typer.Option(2, "--epochs", help="Epochs to train."),
+    device: str = typer.Option("cpu", "--device", help="Torch device, e.g., cpu or cuda."),
+) -> None:
+    """Train multi-head model (codepage + tag + boundary) on synthetic data."""
+    config = MultiTaskConfig(
+        output_dir=output_dir,
+        samples_per_codepage=samples_per_codepage,
+        max_len=max_len,
+        batch_size=batch_size,
+        epochs=epochs,
+        device=device,
+    )
+    console.print("[yellow]Training multi-head model on synthetic data.[/]")
+    metrics = train_multitask(config)
     console.print(f"[bold green]Saved checkpoint[/] to {metrics['checkpoint']}")
     console.print(orjson.dumps(metrics, option=orjson.OPT_INDENT_2).decode())
 
