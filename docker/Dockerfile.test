@@ -1,0 +1,21 @@
+# Test container for reproducible lint/type/test runs.
+# Why: keeps local environments consistent and validates we can run in a clean image.
+
+FROM python:3.10-slim
+
+WORKDIR /workspace
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential make \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md /workspace/
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir torch==2.4.1
+
+COPY src /workspace/src
+COPY tests /workspace/tests
+
+RUN pip install --no-cache-dir -e .[dev]
+
+CMD ["pytest", "-q"]

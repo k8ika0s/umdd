@@ -1,0 +1,43 @@
+UMDD Data Request Guide
+=======================
+
+Goal: acquire real mainframe-origin datasets to train/evaluate codepage detection, field typing, boundary detection, and translation heads. We need RDW/BDW-aware byte streams with known codepages and, ideally, structural hints.
+
+What “good” looks like
+- Raw bytes, not pre-converted to ASCII/UTF-8.
+- RDW- or BDW-prefixed records, or fixed-length records with known LRECL.
+- Known EBCDIC codepage per file (e.g., CP037, CP1047, CP500, CP273). If unknown, note that explicitly.
+- Mixed-mode content: text + packed decimal (COMP-3), binary ints (COMP/COMP-5), and zoned decimal, including signed overpunch.
+- Variety of layouts: copybook-aligned flat files, VSAM (KSDS/ESDS/RS), SMF excerpts if permissible, MQ/CICS payloads if available.
+- Metadata: LRECL/RECFM if fixed; RDW/BDW presence if variable; any copybook/CICS/MQ headers; field dictionaries if available.
+
+Minimum dataset asks (per codepage if possible)
+- 3–5 files per codepage (CP037, CP1047, CP500, CP273) with ≥10K records each.
+- At least one file with:
+  - Packed decimals (COMP-3) including negative values.
+  - Binary integers (COMP/COMP-5) with multi-byte fields.
+  - Zoned decimals with signed overpunch (positive/negative).
+  - Mixed text/binary in the same record.
+- Optional but valuable: SMF extracts, MQ payload samples, VSAM unloads (keyed and non-keyed), and any dataset with embedded dates (CYYMMDD, YYDDD).
+
+Format and delivery
+- Provide as binary files on shared storage (no transcoding to ASCII/UTF-8).
+- Organize by codepage under `data/real/<CODEPAGE>/filename.bin` if feasible.
+- Include a short README/manifest per file with:
+  - Codepage (or “unknown” if not sure).
+  - RECFM (F/FB/V/VB) and LRECL if known.
+  - Whether RDW/BDW prefixes are present.
+  - Any available copybook snippets or field descriptions.
+  - Presence of packed decimal, binary ints, zoned decimals, dates.
+
+Privacy/compliance
+- No PII/PCI/PHI. If data must be realistic, use de-identified or synthetic-but-schema-accurate samples generated internally.
+- If masking is applied, note which fields are masked and how (nulling, hashing, shuffling).
+
+Why we need this
+- Codepage head: needs real EBCDIC variation and mixed-mode bytes to generalize beyond synthetic.
+- Field typing/boundary heads: need authentic packed/zoned/binary patterns and real-world record heterogeneity.
+- Translator head: benefits from real text segments with domain-specific vocab (CICS/MQ/DB2/SMF) and mixed encodings.
+
+Fallback (if real data cannot be shared)
+- Internal synthetic generation matching your schemas: share copybooks/field specs so we can synthesize realistic RDW datasets that mirror field types and distributions without real values.
