@@ -55,7 +55,10 @@ def _build_record(spec: RecordSpec, codepage: str = DEFAULT_CODEPAGE) -> tuple[b
     name_field = f"CUST{spec.customer_id:05d}"
     region_field = spec.region.ljust(4)[:4]
     text = f"{name_field}{region_field}"
-    text_bytes = text.encode(codepage, errors="replace")
+    try:
+        text_bytes = text.encode(codepage, errors="replace")
+    except LookupError:
+        text_bytes = text.encode(DEFAULT_CODEPAGE, errors="replace")
 
     amount_packed = to_packed_decimal(spec.amount_cents, digits=7)  # cents, 7 digits -> 4 bytes
     start_days = (spec.start_date - date(1970, 1, 1)).days
