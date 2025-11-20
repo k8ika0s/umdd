@@ -219,6 +219,7 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 - `umdd train codepage --output-dir artifacts/codepage`: trains a tiny embedding + mean-pool classifier on synthetic data to fix the interface and checkpoint format early; rationale: validates data loaders and training plumbing before real datasets arrive. Accepts real RDW datasets per codepage via `--dataset CP037=path1.bin,path2.bin` and can top up with synthetic via `--synthetic-extra-per-codepage`.
 - `umdd train multitask --output-dir artifacts/multihead`: trains a small shared encoder + heads for codepage, token tags, and field-boundary cues on synthetic RDW data; rationale: exercise the end-to-end training/inference path before real data lands.
 - `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 <input>`: runs the multi-head model on raw RDW data and emits predicted codepage + tagged spans + boundary positions; rationale: prove a working, testable inference path while we iterate on data/model fidelity.
+- Inference outputs: `umdd infer ... --format json|jsonl|arrow` (Arrow IPC) with `--output` for downstream tools that prefer structured files; default is pretty JSON to stdout.
 - Notebook playground: `notebooks/umdd_playground.ipynb` with step-by-step synthetic generation, heuristic preview, tiny multi-head training, and inference. Rationale: give notebook-oriented users a single, heavily commented place to experiment without the CLI.
 - Quick demos: sample copybooks live in `data/copybooks/sample.cpy`, `data/copybooks/smf_sample.cpy`, and `data/copybooks/mq_sample.cpy`; generate fixtures via `umdd dataset copybook data/copybooks/sample.cpy out.bin --metadata out.json`.
 
@@ -234,8 +235,9 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 4) Heuristic decode + log: `umdd eval heuristic --input data/sample.bin --output logs/eval_latest.json` (auto-logs CSV/JSONL unless `--no-auto-log`).
 5) Train multi-head model (codepage + tags + boundaries): `umdd train multitask --output-dir artifacts/multihead --epochs 1`.
 6) Run inference on synthetic bytes: `umdd infer --checkpoint artifacts/multihead/multihead.pt --max-records 1 data/sample.bin`.
-7) Train codepage head on synthetic: `umdd train codepage --output-dir artifacts/codepage`.
-8) Benchmark: `python scripts/benchmark.py` to track heuristic throughput over time.
+7) Inference outputs for downstream tools: `umdd infer --format arrow --output logs/infer.arrow --checkpoint artifacts/multihead/multihead.pt data/sample.bin` (or `--format jsonl`).
+8) Train codepage head on synthetic: `umdd train codepage --output-dir artifacts/codepage`.
+9) Benchmark: `python scripts/benchmark.py` to track heuristic throughput over time.
 
 ## Testing
 - Run unit tests with `pytest`. Early coverage locks in RDW handling, packed-decimal encoding, and the heuristic codepage preview so we can refactor safely as ML components arrive.
@@ -254,7 +256,9 @@ UMDD transforms the modernization ecosystem by automating the hardest part: deco
 - Public search (Hugging Face queries for EBCDIC/mainframe/cobol/VSAM) did not surface raw EBCDIC/VSAM binaries; we are intentionally leaning on synthetic data until org-provided datasets arrive.
 - When you have real RDW-prefixed binaries, drop them under `data/real/<CODEPAGE>/` and train with `--dataset CP037=data/real/CP037/sample.bin` (repeat per codepage). Rationale: keep real data separated, portable, and easily referenced from training CLI flags.
 - Data ask for partners: see `data-request.txt` for what “good” looks like (codepages, RDW/BDW hints, packed/zoned/binary coverage, and masking expectations) so upstream teams can supply useful and compliant samples.
+- Multi-head training can ingest real datasets via `--real CODEPAGE=PATH[:copybook[:bdw]]` to mix real RDW/BDW with synthetic; include a copybook to derive tag/boundary labels when available.
 - Sample copybooks for fixtures: `data/copybooks/sample.cpy`, `data/copybooks/smf_sample.cpy`, `data/copybooks/mq_sample.cpy`. Generate data with `umdd dataset copybook <cpy> out.bin --metadata out.json` to mirror realistic layouts while we wait for real bytes.
+- Runtime image: `docker/Dockerfile.runtime` builds a lean infer-only image (PyTorch CPU + Arrow). Example: `docker build -f docker/Dockerfile.runtime -t umdd-runtime .` then `docker run --rm -v $PWD:/workspace umdd-runtime infer --help`.
 
 ## Change & Run Log
 - Ongoing summary of changes and rationale: `docs/runlog.md`.

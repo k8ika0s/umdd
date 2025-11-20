@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 import torch
 import torch.nn.functional as F
 
@@ -107,3 +109,42 @@ def infer_bytes(
             )
         )
     return results
+
+
+def results_to_jsonl(results: list[InferenceResult], path: Path) -> None:
+    """Write inference results as JSONL for downstream consumption."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for r in results:
+            f.write(
+                json.dumps(
+                    {
+                        "record_index": r.record_index,
+                        "byte_length": r.byte_length,
+                        "codepage": r.codepage,
+                        "codepage_confidence": r.codepage_confidence,
+                        "tag_spans": r.tag_spans,
+                        "boundary_positions": r.boundary_positions,
+                    }
+                )
+                + "\n"
+            )
+
+
+def results_to_arrow(results: list[InferenceResult], path: Path) -> None:
+    """Write inference results to Arrow IPC for analytics-friendly consumption."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.table(
+        {
+            "record_index": [r.record_index for r in results],
+            "byte_length": [r.byte_length for r in results],
+            "codepage": [r.codepage for r in results],
+            "codepage_confidence": [r.codepage_confidence for r in results],
+            # store spans as JSON to keep schema simple
+            "tag_spans": [json.dumps(r.tag_spans) for r in results],
+            "boundary_positions": [r.boundary_positions for r in results],
+        }
+    )
+    with pa.OSFile(str(path), "wb") as sink:
+        with pa.ipc.new_file(sink, table.schema) as writer:
+            writer.write_table(table)

@@ -1,0 +1,16 @@
+# Minimal runtime image for inference-only usage.
+FROM python:3.10-slim
+
+WORKDIR /workspace
+
+# System deps for pyarrow
+RUN apt-get update && apt-get install -y --no-install-recommends libarrow-dev libssl-dev && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml /workspace/
+COPY src /workspace/src
+
+RUN pip install --no-cache-dir . && rm -rf /root/.cache/pip
+
+# Default command prints umdd help; override in `docker run` for inference.
+ENTRYPOINT ["umdd"]
+CMD ["--help"]

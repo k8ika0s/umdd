@@ -13,7 +13,7 @@ from umdd.decoder import heuristic_decode
 from umdd.eval.harness import evaluate_dataset, evaluate_synthetic
 from umdd.eval.report import append_csv, append_jsonl, summary_to_row
 from umdd.eval.summarize import summarize_log
-from umdd.inference import infer_bytes
+from umdd.inference import infer_bytes, results_to_arrow, results_to_jsonl
 from umdd.training.codepage import CodepageTrainingConfig, train_codepage_model
 from umdd.training.multitask import MultiTaskConfig, train_multitask
 
@@ -77,11 +77,25 @@ def infer(
     input: Path = typer.Argument(..., help="Dataset to run model inference against."),
     checkpoint: Path = typer.Option(..., "--checkpoint", "-c", help="Multi-head model checkpoint."),
     max_records: int = typer.Option(1, "--max-records", help="Limit number of records processed."),
-    output: Path | None = typer.Option(None, "--output", "-o", help="Optional path to write JSON."),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Optional path to write output."
+    ),
+    output_format: str = typer.Option(
+        "json",
+        "--format",
+        "-f",
+        help="Output format: json (default), jsonl, or arrow (IPC). Arrow/JSONL require --output.",
+    ),
 ) -> None:
     """Run the multi-head model (codepage + tag + boundary) on input data."""
     data = _read_bytes(input)
     results = infer_bytes(data, checkpoint=checkpoint, max_records=max_records)
+    fmt = output_format.lower()
+    if fmt not in {"json", "jsonl", "arrow"}:
+        raise typer.BadParameter("Format must be one of: json, jsonl, arrow")
+    if fmt in {"jsonl", "arrow"} and not output:
+        raise typer.BadParameter("Arrow/JSONL output requires --output path")
+
     payload = [
         {
             "record_index": r.record_index,
@@ -93,11 +107,18 @@ def infer(
         }
         for r in results
     ]
-    if output:
-        output.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
-        console.print(f"[bold green]Wrote inference output[/] to {output}")
+    if fmt == "jsonl":
+        results_to_jsonl(results, output)  # type: ignore[arg-type]
+        console.print(f"[bold green]Wrote JSONL inference output[/] to {output}")
+    elif fmt == "arrow":
+        results_to_arrow(results, output)  # type: ignore[arg-type]
+        console.print(f"[bold green]Wrote Arrow IPC inference output[/] to {output}")
     else:
-        console.print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
+        if output:
+            output.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+            console.print(f"[bold green]Wrote inference output[/] to {output}")
+        else:
+            console.print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
 
 
 @dataset_app.command("synthetic")
