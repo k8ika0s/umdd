@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-PIC_RE = re.compile(r"PIC\s+([XS9V\(\)\.\-]+)", re.IGNORECASE)
+PIC_RE = re.compile(r"PIC\s+([A-Z0-9\(\)VXS\.\-]+)", re.IGNORECASE)
 USAGE_RE = re.compile(r"USAGE\s+([A-Z0-9\-]+)", re.IGNORECASE)
 NAME_RE = re.compile(r"^\s*\d+\s+([A-Z0-9_-]+)", re.IGNORECASE)
 OCCURS_RE = re.compile(r"OCCURS\s+(\d+)", re.IGNORECASE)
@@ -40,6 +40,12 @@ def parse_copybook(text: str) -> list[Field]:
         pic = pic_match.group(1).upper()
         usage_match = USAGE_RE.search(line)
         usage = usage_match.group(1).upper() if usage_match else None
+        line_upper = line.upper()
+        if usage is None:
+            if "COMP-3" in line_upper:
+                usage = "COMP-3"
+            elif "COMP" in line_upper:
+                usage = "COMP"
         occurs_match = OCCURS_RE.search(line)
         occurs = int(occurs_match.group(1)) if occurs_match else 1
         fields.append(Field(name=name, pic=pic, usage=usage, occurs=occurs))
