@@ -15,7 +15,7 @@ from umdd.eval.report import append_csv, append_jsonl, summary_to_row
 from umdd.eval.summarize import summarize_log
 from umdd.inference import infer_bytes
 from umdd.training.codepage import CodepageTrainingConfig, train_codepage_model
-from umdd.training.multitask import MultiTaskConfig, train_multitask
+from umdd.training.multitask import MultiTaskConfig, RealDataSpec, train_multitask
 
 app = typer.Typer(help="Decode mainframe data into structured outputs.")
 dataset_app = typer.Typer(help="Dataset helpers (synthetic fixtures, conversions).")
@@ -314,8 +314,27 @@ def train_multitask_cli(
     batch_size: int = typer.Option(32, "--batch-size", help="Batch size."),
     epochs: int = typer.Option(2, "--epochs", help="Epochs to train."),
     device: str = typer.Option("cpu", "--device", help="Torch device, e.g., cpu or cuda."),
+    real: list[str] | None = typer.Option(
+        None,
+        "--real",
+        help=(
+            "Optional real data mapping CODEPAGE=PATH[:copybook[:bdw]] (repeatable). "
+            "Use :bdw suffix to indicate BDW blocks; include copybook to derive tags/boundaries."
+        ),
+    ),
 ) -> None:
     """Train multi-head model (codepage + tag + boundary) on synthetic data."""
+    real_specs: list[tuple[str, Path, Path | None, bool]] = []
+    if real:
+        for entry in real:
+            if "=" not in entry:
+                raise typer.BadParameter("Real dataset must be CODEPAGE=PATH[:copybook[:bdw]]")
+            codepage, rest = entry.split("=", 1)
+            parts = rest.split(":")
+            path_str = parts[0]
+            copybook = Path(parts[1]).expanduser() if len(parts) >= 2 and parts[1] else None
+            bdw = len(parts) >= 3 and parts[2].lower() == "bdw"
+            real_specs.append((codepage.strip(), Path(path_str).expanduser(), copybook, bdw))
     config = MultiTaskConfig(
         output_dir=output_dir,
         samples_per_codepage=samples_per_codepage,
@@ -323,6 +342,12 @@ def train_multitask_cli(
         batch_size=batch_size,
         epochs=epochs,
         device=device,
+        real_datasets=[
+            RealDataSpec(codepage=cp, path=path, copybook=cb, bdw=bdw)
+            for cp, path, cb, bdw in real_specs
+        ]
+        if real_specs
+        else None,
     )
     console.print("[yellow]Training multi-head model on synthetic data.[/]")
     metrics = train_multitask(config)
