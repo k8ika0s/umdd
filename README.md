@@ -12,6 +12,25 @@ Running on IBM Z, LinuxONE, or distributed GPU systems, UMDD becomes a drop-in s
 
 UMDD transforms raw mainframe data into fully structured, validated modern data at scale.
 
+## The plain-English pitch
+Mainframe files are the grumpy boxes in a warehouse that only speak EBCDIC and pack numbers into nibble puzzles. UMDD is the translator/cartographer that:
+- Takes raw RDW/BDW byte streams.
+- Figures out which EBCDIC dialect they’re using (CP037, CP1047, etc.).
+- Finds record boundaries, tags fields (text vs packed vs binary), and preserves numerics.
+- Emits clean UTF-8/Arrow/Parquet/JSON ready for analytics.
+
+Why: modernization keeps stalling on “just read the data.” RDW/BDW wrappers, mixed encodings, overpunched zoned decimals, copybooks that don’t quite match reality—these torpedo projects. UMDD removes the guesswork so downstream pipelines aren’t built on sand.
+
+What we have now:
+- Synthetic “mainframe zoo” to train/test: RDW/BDW, packed/zoned/binary fields, copybook-driven layouts.
+- Multi-head model (codepage + tag + boundary) that trains on synthetic/mixed data; inference CLI/notebook with JSON/JSONL/Arrow outputs (optional confidences/gzip) and a lean runtime Docker image.
+- Heuristic decode baseline, CI/tests/eval workflows, logging/benchmark scripts, and a notebook playground for quick exploration.
+
+What to expect:
+- Today: usable end-to-end on synthetic or mixed data—generate, train, infer, export.
+- As real data arrives: fine-tune heads with real RDW/BDW + copybooks; accuracy jumps from “good synthetic citizen” to “handles production quirks.”
+- End goal: push-button decode of mainframe dumps into structured, validated, analytics-ready formats with confidence/anomaly signals.
+
 ## System Overview
 UMDD architecture consists of:
 

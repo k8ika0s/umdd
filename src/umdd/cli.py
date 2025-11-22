@@ -14,6 +14,7 @@ from umdd.eval.harness import evaluate_dataset, evaluate_synthetic
 from umdd.eval.report import append_csv, append_jsonl, summary_to_row
 from umdd.eval.summarize import summarize_log
 from umdd.inference import infer_bytes, results_to_arrow, results_to_jsonl
+from umdd.manifest import load_manifest, validate_manifest
 from umdd.training.codepage import CodepageTrainingConfig, train_codepage_model
 from umdd.training.multitask import MultiTaskConfig, RealDataSpec, train_multitask
 
@@ -21,12 +22,14 @@ app = typer.Typer(help="Decode mainframe data into structured outputs.")
 dataset_app = typer.Typer(help="Dataset helpers (synthetic fixtures, conversions).")
 eval_app = typer.Typer(help="Evaluation harness for heuristics and future model heads.")
 train_app = typer.Typer(help="Training entrypoints for model heads.")
+manifest_app = typer.Typer(help="Manifest helpers for real dataset validation.")
 console = Console()
 SUPPORTED_FORMATS = {"json", "csv", "arrow"}
 
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(eval_app, name="eval")
 app.add_typer(train_app, name="train")
+app.add_typer(manifest_app, name="manifest")
 
 
 def _read_bytes(path: Path) -> bytes:
@@ -133,6 +136,16 @@ def infer(
             console.print(f"[bold green]Wrote inference output[/] to {output}")
         else:
             console.print(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
+
+
+@manifest_app.command("validate")
+def manifest_validate(manifest: Path = typer.Argument(..., help="Path to manifest JSON.")) -> None:
+    """Validate dataset existence/hash + RDW/BDW parsing + printability (+ copybook if present)."""
+    mf = load_manifest(manifest)
+    result = validate_manifest(mf)
+    console.print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode())
+    if result.get("warnings"):
+        raise typer.Exit(code=1)
 
 
 @dataset_app.command("synthetic")
