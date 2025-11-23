@@ -8,6 +8,7 @@ import streamlit as st
 from umdd.inference import InferenceResult, infer_bytes, results_to_arrow, results_to_jsonl
 from umdd.manifest import load_manifest, validate_manifest
 from umdd.training.multitask import MultiTaskConfig, train_multitask
+from umdd.eval.harness import evaluate_dataset
 
 
 def _render_spans(res: InferenceResult) -> str:
@@ -19,6 +20,14 @@ def _render_spans(res: InferenceResult) -> str:
 
 def main() -> None:
     st.title("UMDD Inference, Validation, and Training")
+    st.caption(
+        "Upload a manifest to validate, run inference with confidences and downloads, or kick off a tiny synthetic training run."
+    )
+    st.info(
+        "Tip: use the notebook or CLI for full control; this UI is a quick way to validate and demo flows with small files."
+    )
+    st.session_state.setdefault("infer_logs", [])
+    st.session_state.setdefault("train_logs", [])
 
     tabs = st.tabs(["Validate", "Infer", "Train"])
 
@@ -31,9 +40,16 @@ def main() -> None:
             mf = load_manifest(tmp_path)
             result = validate_manifest(mf)
             st.json(result)
+            # Optional quick eval on the dataset for heuristics/printability
+            if mf.path.exists():
+                data = mf.path.read_bytes()
+                summary = evaluate_dataset(data)
+                st.markdown("**Heuristic eval summary**")
+                st.json(summary.__dict__ if hasattr(summary, "__dict__") else summary)
 
     with tabs[1]:
         st.subheader("Inference")
+        st.write("Upload a small RDW/BDW sample to preview codepage guesses, spans, boundaries, and confidences.")
         checkpoint = st.text_input("Checkpoint path", "artifacts/multihead/multihead.pt")
         max_records = st.number_input("Max records", min_value=1, value=2, step=1, key="infer_max_records")
         include_conf = st.checkbox("Include confidences", value=True, key="infer_conf")
@@ -73,6 +89,27 @@ def main() -> None:
             )
             st.dataframe(table, height=300)
 
+            # Quick codepage distribution visualization
+            codepage_counts = table["codepage"].value_counts().rename_axis("codepage").reset_index(name="count")
+            st.bar_chart(codepage_counts.set_index("codepage"))
+
+            avg_conf = table["codepage_confidence"].mean()
+            st.write(f"Average codepage confidence: {avg_conf:.3f}")
+
+            # Append to session logs
+            st.session_state["infer_logs"].append(
+                {
+                    "bytes": len(data),
+                    "records": len(results),
+                    "seconds": elapsed,
+                    "throughput_Bps": len(data) / max(elapsed, 1e-6),
+                    "avg_cp_conf": avg_conf,
+                }
+            )
+            if st.session_state["infer_logs"]:
+                st.markdown("**Recent inference runs**")
+                st.dataframe(pd.DataFrame(st.session_state["infer_logs"]).tail(5))
+
             if fmt == "json":
                 buf = json.dumps(results, default=lambda o: o.__dict__).encode()
                 st.download_button("Download JSON", buf, file_name="infer.json")
@@ -86,6 +123,7 @@ def main() -> None:
 
     with tabs[2]:
         st.subheader("Train (small demo)")
+        st.write("Runs a tiny synthetic multi-head training job for demo purposes (CPU-friendly).")
         train_epochs = st.number_input("Epochs", min_value=1, value=1, step=1)
         samples_per_cp = st.number_input("Samples per codepage", min_value=4, value=8, step=1)
         device = st.selectbox("Device", ["cpu", "cuda"], key="train_device")
@@ -104,6 +142,17 @@ def main() -> None:
             elapsed = time.time() - start
             st.json(metrics)
             st.success(f"Training completed in {elapsed:.2f}s; checkpoint at {metrics['checkpoint']}")
+            st.session_state["train_logs"].append(
+                {
+                    "epochs": train_epochs,
+                    "samples_per_codepage": samples_per_cp,
+                    "seconds": elapsed,
+                    "checkpoint": metrics.get("checkpoint"),
+                }
+            )
+        if st.session_state["train_logs"]:
+            st.markdown("**Recent training runs**")
+            st.dataframe(pd.DataFrame(st.session_state["train_logs"]).tail(5))
 
 
 if __name__ == "__main__":
