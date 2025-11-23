@@ -28,11 +28,13 @@ def main() -> None:
     )
     st.session_state.setdefault("infer_logs", [])
     st.session_state.setdefault("train_logs", [])
+    st.session_state.setdefault("manifest_paths", [])
 
     tabs = st.tabs(["Validate", "Infer", "Train"])
 
     with tabs[0]:
         st.subheader("Validate manifest")
+        st.write("Manifest describes dataset path, codepage, BDW flag, copybook, and optional checks.")
         manifest_file = st.file_uploader("Upload manifest (json/yaml)", type=["json", "yml", "yaml"])
         if manifest_file:
             tmp_path = Path("uploaded_manifest")
@@ -40,12 +42,19 @@ def main() -> None:
             mf = load_manifest(tmp_path)
             result = validate_manifest(mf)
             st.json(result)
+            st.session_state["manifest_paths"].append(str(mf.path))
             # Optional quick eval on the dataset for heuristics/printability
             if mf.path.exists():
                 data = mf.path.read_bytes()
                 summary = evaluate_dataset(data)
                 st.markdown("**Heuristic eval summary**")
                 st.json(summary.__dict__ if hasattr(summary, "__dict__") else summary)
+            else:
+                st.warning("Manifest file path does not exist; validation incomplete.")
+        if st.session_state["manifest_paths"]:
+            st.markdown("Recent manifest dataset paths:")
+            for p in st.session_state["manifest_paths"][-5:]:
+                st.code(p)
 
     with tabs[1]:
         st.subheader("Inference")
@@ -59,6 +68,8 @@ def main() -> None:
         uploaded = st.file_uploader("Upload RDW/BDW file", type=["bin", "dat"], key="infer_file")
         if uploaded:
             data = uploaded.read()
+            if len(data) > 5_000_000:
+                st.warning("Uploaded file is large (>5MB). UI is intended for small samples; use CLI for big runs.")
             st.info(f"Received {len(data)} bytes")
             start = time.time()
             results = infer_bytes(
@@ -96,6 +107,26 @@ def main() -> None:
             avg_conf = table["codepage_confidence"].mean()
             st.write(f"Average codepage confidence: {avg_conf:.3f}")
 
+            # Span preview: show first record's spans with confidences if available
+            if results:
+                first = results[0]
+                st.markdown("**First record spans**")
+                span_rows = []
+                for span in first.tag_spans:
+                    conf = None
+                    # map span start to confidence if we have them
+                    if first.tag_confidences:
+                        conf = round(
+                            sum(first.tag_confidences[span["start"] : span["end"]]) / max(
+                                1, (span["end"] - span["start"])
+                            ),
+                            3,
+                        )
+                    span_rows.append(
+                        {"tag": span["tag"], "start": span["start"], "end": span["end"], "avg_confidence": conf}
+                    )
+                st.dataframe(pd.DataFrame(span_rows))
+
             # Append to session logs
             st.session_state["infer_logs"].append(
                 {
@@ -128,6 +159,7 @@ def main() -> None:
         samples_per_cp = st.number_input("Samples per codepage", min_value=4, value=8, step=1)
         device = st.selectbox("Device", ["cpu", "cuda"], key="train_device")
         output_dir = st.text_input("Output dir", "artifacts/ui-multihead")
+        st.caption("For real training, switch to CLI with --real manifests to mix real datasets.")
         if st.button("Run tiny training (synthetic)"):
             cfg = MultiTaskConfig(
                 output_dir=Path(output_dir),
