@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from umdd.copybook.parser import parse_copybook
 from umdd.data.loader import iter_bdw_records, iter_records_with_rdw, labels_from_copybook
 
@@ -132,5 +134,23 @@ def validate_manifest(manifest: Manifest) -> dict[str, Any]:
 
 
 def load_manifest(path: Path) -> Manifest:
-    payload = json.loads(path.read_text())
+    if path.suffix.lower() in {".yml", ".yaml"}:
+        payload = yaml.safe_load(path.read_text())
+    else:
+        payload = json.loads(path.read_text())
     return Manifest.from_mapping(payload)
+
+
+def sample_manifest() -> dict[str, Any]:
+    return {
+        "name": "sample_cp037",
+        "codepage": "cp037",
+        "path": "data/real/CP037/sample.bin",
+        "bdw": False,
+        "copybook": "data/copybooks/sample.cpy",
+        "recfm": "VB",
+        "lrecl": None,
+        "hash": "sha256:<hex>",
+        "notes": "edit with real details",
+        "checks": {"max_records": 20000, "min_printable_ratio": 0.2, "pii_scan": True},
+    }

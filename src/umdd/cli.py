@@ -148,6 +148,20 @@ def manifest_validate(manifest: Path = typer.Argument(..., help="Path to manifes
         raise typer.Exit(code=1)
 
 
+@manifest_app.command("sample")
+def manifest_sample(
+    output: Path = typer.Option(
+        Path("manifest_sample.json"), "--output", "-o", help="Where to write the sample manifest."
+    ),
+) -> None:
+    """Write a sample manifest template to edit."""
+    from umdd.manifest import sample_manifest
+
+    payload = sample_manifest()
+    output.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+    console.print(f"[bold green]Wrote sample manifest[/] to {output}")
+
+
 @dataset_app.command("synthetic")
 def dataset_synthetic(
     output: Path = typer.Argument(..., help="Path to write the synthetic dataset (.bin)."),

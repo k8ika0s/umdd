@@ -1,0 +1,16 @@
+{
+  "name": "sample_cp037",
+  "codepage": "cp037",
+  "path": "data/real/CP037/sample.bin",
+  "bdw": false,
+  "copybook": "data/copybooks/sample.cpy",
+  "recfm": "VB",
+  "lrecl": null,
+  "hash": "sha256:<hex>",
+  "notes": "edit with real details",
+  "checks": {
+    "max_records": 20000,
+    "min_printable_ratio": 0.2,
+    "pii_scan": true
+  }
+}
