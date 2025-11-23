@@ -139,11 +139,21 @@ def infer(
 
 
 @manifest_app.command("validate")
-def manifest_validate(manifest: Path = typer.Argument(..., help="Path to manifest JSON.")) -> None:
+def manifest_validate(
+    manifest: Path = typer.Argument(..., help="Path to manifest JSON/YAML."),
+    report: Path | None = typer.Option(
+        None, "--report", "-r", help="Optional HTML report output path."
+    ),
+) -> None:
     """Validate dataset existence/hash + RDW/BDW parsing + printability (+ copybook if present)."""
     mf = load_manifest(manifest)
     result = validate_manifest(mf)
     console.print(orjson.dumps(result, option=orjson.OPT_INDENT_2).decode())
+    if report:
+        from umdd.manifest import render_validation_html
+
+        render_validation_html(result, report)
+        console.print(f"[bold green]Wrote HTML report[/] to {report}")
     if result.get("warnings"):
         raise typer.Exit(code=1)
 

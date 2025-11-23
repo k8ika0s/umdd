@@ -154,3 +154,30 @@ def sample_manifest() -> dict[str, Any]:
         "notes": "edit with real details",
         "checks": {"max_records": 20000, "min_printable_ratio": 0.2, "pii_scan": True},
     }
+
+
+def render_validation_html(result: dict[str, Any], output: Path) -> None:
+    """Render a simple HTML report for validation results."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    warnings = result.get("warnings", [])
+    rows = "".join(
+        f"<tr><td>{k}</td><td>{v}</td></tr>"
+        for k, v in result.items()
+        if k not in {"warnings", "pii_counts", "copybook_coverage"}
+    )
+    pii = result.get("pii_counts") or {}
+    pii_rows = "".join(f"<li>{k}: {v}</li>" for k, v in pii.items())
+    html = f"""<!DOCTYPE html>
+<html><head><title>UMDD Manifest Validation</title></head>
+<body>
+<h1>UMDD Manifest Validation Report</h1>
+<p><strong>Name:</strong> {result.get("name")}</p>
+<p><strong>Warnings:</strong> {", ".join(warnings) if warnings else "None"}</p>
+<table border="1" cellpadding="4" cellspacing="0">
+{rows}
+</table>
+<h3>PII Scan</h3>
+<ul>{pii_rows}</ul>
+</body></html>
+"""
+    output.write_text(html)
