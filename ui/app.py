@@ -5,10 +5,10 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from umdd.eval.harness import evaluate_dataset
 from umdd.inference import InferenceResult, infer_bytes, results_to_arrow, results_to_jsonl
 from umdd.manifest import load_manifest, validate_manifest
 from umdd.training.multitask import MultiTaskConfig, train_multitask
-from umdd.eval.harness import evaluate_dataset
 
 
 def _render_spans(res: InferenceResult) -> str:
@@ -55,6 +55,9 @@ def main() -> None:
             st.markdown("Recent manifest dataset paths:")
             for p in st.session_state["manifest_paths"][-5:]:
                 st.code(p)
+        if st.button("Run synthetic eval/benchmark (quick check)"):
+            bench = evaluate_dataset(evaluate_dataset.__defaults__[0] if evaluate_dataset.__defaults__ else b"")  # placeholder synthetic
+            st.json(bench.__dict__ if hasattr(bench, "__dict__") else bench)
 
     with tabs[1]:
         st.subheader("Inference")
