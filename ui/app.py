@@ -109,8 +109,9 @@ def main() -> None:
 
             # Span preview: show first record's spans with confidences if available
             if results:
-                first = results[0]
-                st.markdown("**First record spans**")
+                st.markdown("**Inspect record spans**")
+                rec_idx = st.slider("Record index", 0, len(results) - 1, 0)
+                first = results[rec_idx]
                 span_rows = []
                 for span in first.tag_spans:
                     conf = None
@@ -126,6 +127,10 @@ def main() -> None:
                         {"tag": span["tag"], "start": span["start"], "end": span["end"], "avg_confidence": conf}
                     )
                 st.dataframe(pd.DataFrame(span_rows))
+                # Tag distribution for this record
+                tag_counts = pd.Series([s["tag"] for s in first.tag_spans]).value_counts()
+                st.bar_chart(tag_counts)
+                st.code(f"Boundary positions: {first.boundary_positions}")
 
             # Append to session logs
             st.session_state["infer_logs"].append(
