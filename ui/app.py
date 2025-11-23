@@ -1,11 +1,12 @@
 import json
+import time
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from umdd.inference import InferenceResult, infer_bytes, results_to_arrow, results_to_jsonl
-from umdd.manifest import Manifest, load_manifest, validate_manifest
+from umdd.manifest import load_manifest, validate_manifest
 
 
 def _render_spans(res: InferenceResult) -> str:
@@ -22,6 +23,7 @@ def main() -> None:
     max_records = st.number_input("Max records", min_value=1, value=2, step=1)
     include_conf = st.checkbox("Include confidences", value=True)
     fmt = st.selectbox("Output format", ["json", "jsonl", "arrow"])
+    log_perf = st.checkbox("Log performance (throughput/latency)", value=True)
 
     st.header("Validate manifest")
     manifest_file = st.file_uploader("Upload manifest (json/yaml)", type=["json", "yml", "yaml"])
@@ -37,12 +39,20 @@ def main() -> None:
     if uploaded:
         data = uploaded.read()
         st.info(f"Received {len(data)} bytes")
+        start = time.time()
         results = infer_bytes(
             data,
             Path(checkpoint),
             max_records=int(max_records),
             include_confidence=include_conf,
         )
+        elapsed = time.time() - start
+        if log_perf:
+            bytes_read = len(data)
+            recs = len(results)
+            st.success(
+                f"Inference: {elapsed:.3f}s | records: {recs} | throughput: {bytes_read / max(elapsed, 1e-6):.1f} B/s"
+            )
         # Display summary table
         table = pd.DataFrame(
             [
